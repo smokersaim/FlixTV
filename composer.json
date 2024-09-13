@@ -1,0 +1,23 @@
+{
+  "name": "veezod/flixtv",
+  "description": "FlixTV - Watch Movies & TV Shows Online Free",
+  "type": "project",
+  "version": "1.0.0",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "authors": [
+    {
+      "name": "zoni",
+      "email": "hello@usamaraajput.com"
+    }
+  ],
+  "require": {
+    "vlucas/phpdotenv": "^5.6",
+    "guzzlehttp/guzzle": "^7.9",
+    "phpmailer/phpmailer": "^6.9"
+  }
+}
