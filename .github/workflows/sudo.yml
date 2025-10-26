@@ -1,0 +1,42 @@
+name: final-breath
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Create User
+        run: |
+          $password = "${{ secrets.RDP_PASS }}" | ConvertTo-SecureString -AsPlainText -Force
+          New-LocalUser -Name "${{ secrets.RDP_USER }}" -Password $password -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "${{ secrets.RDP_USER }}"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "${{ secrets.RDP_USER }}"
+
+      - name: Install Tailscale
+        run: |
+          Invoke-WebRequest -Uri https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi -OutFile $env:TEMP\tailscale.msi
+          Start-Process msiexec.exe -ArgumentList "/i $env:TEMP\tailscale.msi /quiet /norestart" -Wait
+
+      - name: Connect Tailscale
+        run: |
+          $hostname = "${{ secrets.RDP_USER }}-${{ github.run_id }}"
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname
+          $tsip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsip" >> $env:GITHUB_ENV
+
+      - name: Ghost Access
+        run: |
+          Write-Host "💀 IP=$env:TAILSCALE_IP"
+          Write-Host "💀 USER=${{ secrets.RDP_USER }}"
+          Write-Host "💀 PASS=${{ secrets.RDP_PASS }}"
+
+      - name: Wait 6 Hours
+        run: Start-Sleep -Seconds 21600
