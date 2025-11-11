@@ -5,49 +5,36 @@ on:
 jobs:
   rdp:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours
+    timeout-minutes: 360
 
     steps:
       - name: Create User and Enable SSH
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y openssh-server neofetch
+          sudo apt-get install -y openssh-server 
           sudo service ssh start
           if ! id -u "${{ secrets.RDP_USER }}" >/dev/null 2>&1; then
             sudo useradd -m -s /bin/bash "${{ secrets.RDP_USER }}"
           fi
           echo "${{ secrets.RDP_USER }}:${{ secrets.RDP_PASS }}" | sudo chpasswd
           sudo usermod -aG sudo "${{ secrets.RDP_USER }}"
-          echo "neofetch" | sudo tee -a /home/${{ secrets.RDP_USER }}/.bashrc
           sudo chown ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} /home/${{ secrets.RDP_USER }}/.bashrc
-
-      - name: Install Desktop + XRDP
-        run: |
-          sudo apt-get install -y xfce4 xfce4-goodies xorg dbus-x11 x11-xserver-utils xrdp
-          echo xfce4-session > /home/${{ secrets.RDP_USER }}/.xsession
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
-          sudo adduser ${{ secrets.RDP_USER }} ssl-cert
-          sudo ufw allow 3389/tcp || true
-          sudo service xrdp restart
 
       - name: Install Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }}
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
           TSIP=$(tailscale ip -4 | head -n1)
           echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
 
       - name: Show Access Info
         run: |
-          echo "🖥️ RDP server ready!"
+          echo "🖥️ SSH server ready!"
           echo "--------------------------------"
-          echo "Host: $TAILSCALE_IP:3389"
+          echo "Host: $TAILSCALE_IP"
           echo "User: ${{ secrets.RDP_USER }}"
           echo "Pass: ${{ secrets.RDP_PASS }}"
           echo "--------------------------------"
-          echo "💡 Open 'Remote Desktop Connection' (mstsc) in Windows"
-          echo "   and connect using these credentials."
 
       - name: Keep Alive for 6 Hours
-        run: sleep 21600  # 6 hours
+        run: sleep 21600
