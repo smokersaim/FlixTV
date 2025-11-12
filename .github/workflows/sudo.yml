@@ -1,42 +1,165 @@
-name: final-breath
+name: sudo-cry
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 360
 
     steps:
-      - name: Enable RDP
+      - name: Create User and Enable SSH
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          sudo apt-get update -y
+          sudo apt-get install -y openssh-server git
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+          if ! id -u "${{ secrets.RDP_USER }}" >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash "${{ secrets.RDP_USER }}"
+          fi
+          echo "${{ secrets.RDP_USER }}:${{ secrets.RDP_PASS }}" | sudo chpasswd
+          sudo usermod -aG sudo "${{ secrets.RDP_USER }}"
+          echo "${{ secrets.RDP_USER }} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${{ secrets.RDP_USER }}
+          sudo chmod 0440 /etc/sudoers.d/${{ secrets.RDP_USER }}
 
-      - name: Create User
+      - name: Install Code Server
         run: |
-          $password = "${{ secrets.RDP_PASS }}" | ConvertTo-SecureString -AsPlainText -Force
-          New-LocalUser -Name "${{ secrets.RDP_USER }}" -Password $password -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "${{ secrets.RDP_USER }}"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "${{ secrets.RDP_USER }}"
+          curl -fsSL https://code-server.dev/install.sh | sh
+          nohup sudo code-server --bind-addr 0.0.0.0:3000 --auth none --cert false > /dev/null 2>&1 &
 
-      - name: Install Tailscale
+      - name: Configure Code Server Settings & Extensions
         run: |
-          Invoke-WebRequest -Uri https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi -OutFile $env:TEMP\tailscale.msi
-          Start-Process msiexec.exe -ArgumentList "/i $env:TEMP\tailscale.msi /quiet /norestart" -Wait
+          sudo mkdir -p ~/.local/share/code-server/User
+          sudo tee ~/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
+          {
+            "workbench.startupEditor": "none",
+            "workbench.welcomePage.enabled": false,
+            "workbench.colorTheme": "Default Dark Modern",
+            "workbench.productIconTheme": "fluent-icons",
+            "workbench.statusBar.visible": false,
+            "workbench.editorLargeFileConfirmation": 10024,
+            "workbench.editor.showTabs": "multiple",
+            "workbench.layoutControl.enabled": false,
+            "workbench.activityBar.location": "top",
+            "workbench.tree.indent": 14,
+            "workbench.iconTheme": "icons",
+            "workbench.secondarySideBar.defaultVisibility": "visible",
+            "workbench.colorCustomizations": {
+              "inlineparameters.annotationBackground": "#282AA3600",
+              "inlineparameters.annotationForeground": "#7b82af",
+              "scrollbar.shadow": "#24292e00"
+            },
+            "breadcrumbs.enabled": false,
+            "breadcrumbs.symbolPath": "off",
+            "breadcrumbs.filePath": "on",
+            "window.menuBarVisibility": "toggle",
+            "explorer.confirmDragAndDrop": false,
+            "explorer.confirmDelete": true,
+            "explorer.confirmPasteNative": false,
+            "explorer.compactFolders": false,
+            "explorer.sortOrder": "type",
+            "files.autoReveal": false,
+            "editor.fontFamily": "Cascadia Code, 'Courier New', monospace",
+            "editor.fontSize": 16,
+            "editor.lineHeight": 1.4,
+            "editor.tabSize": 3,
+            "editor.detectIndentation": false,
+            "editor.formatOnSave": true,
+            "editor.formatOnPaste": true,
+            "editor.defaultFormatter": "esbenp.prettier-vscode",
+            "editor.codeActionsOnSave": {},
+            "editor.fontLigatures": "'calt', 'ss01'",
+            "editor.glyphMargin": true,
+            "editor.folding": true,
+            "editor.cursorStyle": "line",
+            "editor.minimap.enabled": false,
+            "editor.guides.indentation": false,
+            "editor.guides.bracketPairs": true,
+            "editor.suggestSelection": "first",
+            "editor.unicodeHighlight.ambiguousCharacters": false,
+            "editor.unicodeHighlight.invisibleCharacters": false,
+            "editor.bracketPairColorization.enabled": true,
+            "editor.scrollbar": {
+              "verticalScrollbarSize": 8,
+              "horizontalScrollbarSize": 8
+            },
+            "diffEditor.codeLens": true,
+            "terminal.integrated.defaultProfile.windows": "Git Bash",
+            "terminal.integrated.fontFamily": "Cascadia Code PL",
+            "terminal.integrated.fontSize": 14,
+            "terminal.integrated.lineHeight": 1.2,
+            "terminal.integrated.enableMultiLinePasteWarning": "always",
+            "extensions.autoRestart": true,
+            "extensions.ignoreRecommendations": true,
+            "extensions.closeExtensionDetailsOnViewChange": true,
+            "git.autofetch": true,
+            "git.enableSmartCommit": true,
+            "git.openRepositoryInParentFolders": "never",
+            "javascript.updateImportsOnFileMove.enabled": "always",
+            "go.toolsManagement.autoUpdate": true,
+            "database-client.autoSync": true,
+            "update.showReleaseNotes": false
+          }
+          EOF
+          sudo code-server --install-extension miguelsolorio.fluent-icons
+          sudo code-server --install-extension golang.go
+          sudo code-server --install-extension tal7aouy.icons
+          sudo code-server --install-extension esbenp.prettier-vscode
+          sudo code-server --install-extension ms-python.python
+          sudo code-server --install-extension ms-python.debugpy
+          sudo code-server --install-extension ms-python.vscode-pylance
+          sudo code-server --install-extension ms-python.vscode-python-envs
+          sudo code-server --install-extension ritwickdey.LiveServer
+          sudo code-server --install-extension google.geminicodeassist
 
-      - name: Connect Tailscale
+      - name: Install and Configure Ngrok
         run: |
-          $hostname = "${{ secrets.RDP_USER }}-${{ github.run_id }}"
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=$hostname
-          $tsip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          echo "TAILSCALE_IP=$tsip" >> $env:GITHUB_ENV
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          nohup sudo ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Ghost Access
+      - name: Install and Configure Tailscale
         run: |
-          Write-Host "💀 IP=$env:TAILSCALE_IP"
-          Write-Host "💀 USER=${{ secrets.RDP_USER }}"
-          Write-Host "💀 PASS=${{ secrets.RDP_PASS }}"
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
+          TSIP=$(sudo tailscale ip -4 | head -n1)
+          echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
 
-      - name: Wait 6 Hours
-        run: Start-Sleep -Seconds 21600
+      - name: Clone Repository and Enable Auto Sync
+        run: |
+          git clone https://github.com/smokersaim/chatterbox ~/chatterbox
+          cd ~/chatterbox
+          git config --global user.name "Smoker Saim"
+          git config --global user.email "smoker.saim@gmail.com"
+          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
+            git remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
+          fi
+          nohup bash -c '
+          while true; do
+            cd ~/chatterbox
+            git pull --rebase
+            if [ -n "$(git status --porcelain)" ]; then
+              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+              git add -A
+              git commit -m "Auto sync from code-server at $TIMESTAMP"
+              git push origin main || true
+            fi
+            sleep 60
+          done
+          ' > /dev/null 2>&1 &
+
+      - name: Show Access Info
+        run: |
+          echo "🖥️ Access Information"
+          echo "--------------------------------"
+          echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
+          echo "Tailscale IP: $TAILSCALE_IP"
+          echo "SSH User: ${{ secrets.RDP_USER }}"
+          echo "SSH Pass: ${{ secrets.RDP_PASS }}"
+          echo "Repo auto-sync: enabled (every 1 min)"
+          echo "--------------------------------"
+
+      - name: Keep Alive for 6 Hours
+        run: sudo sleep 21600
