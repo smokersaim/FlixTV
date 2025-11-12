@@ -8,14 +8,14 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Setup System Environment
+      - name: Setup Environment and Install Dependencies
         run: |
           sudo apt-get update -y
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update -y
           sudo apt-get install -y openssh-server git curl software-properties-common
-          sudo apt install -y python3.13 python3.13-venv python3.13-dev python3.13-tk 
-          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
+          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-tk python3.12-lib2to3
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
@@ -31,29 +31,26 @@ jobs:
           echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
           sudo chmod 0440 /etc/sudoers.d/$RDP_USER
 
-      - name: Install Core Tools
+      - name: Install Tools
         run: |
           sudo curl -fsSL https://tailscale.com/install.sh | sh
           sudo curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Initialize Tailscale Network
-        run: |
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} \
-            --hostname=sudo-cry-${{ github.run_id }} --ssh
+      - name: Start Tailscale
+        run: sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
 
-      - name: Install and Launch Ngrok
+      - name: Install and Run Ngrok
         run: |
           curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
             | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
-            | sudo tee /etc/apt/sources.list.d/ngrok.list
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update
           sudo apt install -y ngrok
 
           sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Install VSCode Extensions
+      - name: Install Code Server Extensions
         run: |
           sudo code-server --install-extension golang.go --force
           sudo code-server --install-extension esbenp.prettier-vscode --force
@@ -65,7 +62,7 @@ jobs:
           sudo code-server --install-extension google.geminicodeassist --force
           sudo code-server --install-extension saoudrizwan.claude-dev@3.35.1 --force
 
-      - name: Configure VSCode Settings
+      - name: Configure Code Server Settings
         run: |
           sudo tee "/root/.local/share/code-server/User/settings.json" > /dev/null <<EOF
           {
@@ -132,11 +129,10 @@ jobs:
           }
           EOF
 
-      - name: Launch Code Server Service
+      - name: Start Code Server
         run: |
           CONFIG_FILE="/home/runner/.config/code-server/config.yaml"
           sudo mkdir -p "$(dirname "$CONFIG_FILE")"
-
           update_or_add() {
             local key="$1"
             local value="$2"
@@ -146,14 +142,13 @@ jobs:
               echo "$key: $value" | sudo tee -a "$CONFIG_FILE" > /dev/null
             fi
           }
-
           update_or_add "bind-addr" "0.0.0.0:3000"
           update_or_add "auth" "password"
           update_or_add "password" "password"
           update_or_add "cert" "false"
           sudo nohup code-server "/home/${{ secrets.RDP_USER }}/chatterbox" > /dev/null 2>&1 &
 
-      - name: Clone Repository and Setup Auto-Sync
+      - name: Clone Repository and Enable Auto Sync Setup
         run: |
           RDP_USER="${{ secrets.RDP_USER }}"
           RDP_HOME="/home/$RDP_USER"
@@ -184,10 +179,10 @@ jobs:
           done
           ' > /dev/null 2>&1 &
 
-      - name: Display Access Information
+      - name: Show Access Info
         run: |
           echo "Tailscale IP: $(tailscale ip -4)"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
 
-      - name: Keep Workflow Active
+      - name: Keep Alive
         run: sudo sleep 21600
