@@ -136,15 +136,21 @@ jobs:
           sudo echo "cert: false" >> /home/runner/.config/code-server/config.yaml
           sudo nohup code-server "/home/${{ secrets.RDP_USER }}/chatterbox" --config /home/runner/.config/code-server/config.yaml > /dev/null 2>&1 &
 
-      - name: Clone Repository and Enable Auto Sync
+      - name: Clone Repository and Enable Auto Sync Setup
         run: |
           RDP_USER="${{ secrets.RDP_USER }}"
-          sudo git clone https://github.com/smokersaim/chatterbox /home/$RDP_USER/chatterbox
-          sudo git config --global user.name "Smoker Saim"
-          sudo git config --global user.email "smoker.saim@gmail.com"
-          sudo nohup bash -c '
+          RDP_HOME="/home/$RDP_USER"
+          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
+          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
+          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
+
+          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
+            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
+          fi
+
+          sudo -u "$RDP_USER" nohup bash -c '
           while true; do
-            cd /home/$RDP_USER/chatterbox
+            cd /home/${{ secrets.RDP_USER }}/chatterbox
             git pull --rebase
             if [ -n "$(git status --porcelain)" ]; then
               TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
