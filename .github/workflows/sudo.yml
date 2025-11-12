@@ -103,7 +103,6 @@ jobs:
           EOF
           sudo code-server --install-extension miguelsolorio.fluent-icons
           sudo code-server --install-extension golang.go
-          sudo code-server --install-extension tal7aouy.icons
           sudo code-server --install-extension esbenp.prettier-vscode
           sudo code-server --install-extension ms-python.python
           sudo code-server --install-extension ms-python.debugpy
