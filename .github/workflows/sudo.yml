@@ -142,14 +142,21 @@ jobs:
         run: |
           RDP_USER="${{ secrets.RDP_USER }}"
           RDP_HOME="/home/$RDP_USER"
-          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
+
+          # Set up git configuration for RDP_USER
+          sudo -u "$RDP_USER" mkdir -p "/home/$RDP_USER/.config/git"
           sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
           sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
 
+          # Clone repository
+          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
+
+          # Set up remote with token if provided
           if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
             sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
           fi
 
+          # Start auto-sync process
           sudo -u "$RDP_USER" nohup bash -c '
           while true; do
             cd /home/$RDP_USER/chatterbox
