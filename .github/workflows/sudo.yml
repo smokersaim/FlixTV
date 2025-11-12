@@ -50,14 +50,6 @@ jobs:
           sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Ensure Code Server Directories
-        run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          sudo mkdir -p "/home/$RDP_USER/.local/share/code-server/User"
-          sudo mkdir -p "/home/$RDP_USER/.config/code-server"
-          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.local/share/code-server"
-          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/code-server"
-
       - name: Install Code Server Extensions
         run: |
           sudo code-server --install-extension golang.go
@@ -71,9 +63,7 @@ jobs:
 
       - name: Configure Code Server Settings
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          sudo -u "$RDP_USER" mkdir -p "/home/$RDP_USER/.local/share/code-server/User"
-          sudo -u "$RDP_USER" tee "/home/$RDP_USER/.local/share/code-server/User/settings.json" > /dev/null <<'EOF'
+          sudo tee "/root/.local/share/code-server/User/settings.json" > /dev/null <<EOF
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
@@ -138,51 +128,29 @@ jobs:
           }
           EOF
 
-      - name: Clone Repository and Enable Auto Sync Setup
-        run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          RDP_HOME="/home/$RDP_USER"
-
-          # Set up git configuration for RDP_USER
-          sudo -u "$RDP_USER" mkdir -p "/home/$RDP_USER/.config/git"
-          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
-          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
-
-          # Clone repository
-          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
-
-          # Set up remote with token if provided
-          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
-            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
-          fi
-
-          # Start auto-sync process
-          sudo -u "$RDP_USER" nohup bash -c '
-          while true; do
-            cd /home/$RDP_USER/chatterbox
-            git pull --rebase
-            if [ -n "$(git status --porcelain)" ]; then
-              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-              git add -A
-              git commit -m "Auto sync from code-server at $TIMESTAMP"
-              git push origin main || true
-            fi
-            sleep 60
-          done
-          ' > /dev/null 2>&1 &
-
       - name: Start Code Server
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          CONFIG_DIR="/home/$RDP_USER/.config/code-server"
-          sudo -u "$RDP_USER" mkdir -p "$CONFIG_DIR"
-          sudo -u "$RDP_USER" tee "$CONFIG_DIR/config.yaml" > /dev/null <<'EOF'
-          bind-addr: 0.0.0.0:3000
-          auth: password
-          password: password
-          cert: false
-          EOF
-          sudo -u "$RDP_USER" nohup code-server "/home/$RDP_USER/chatterbox" --config "$CONFIG_DIR/config.yaml" > /dev/null 2>&1 &
+          CONFIG_FILE="/home/runner/.config/code-server/config.yaml"
+
+          mkdir -p "$(dirname "$CONFIG_FILE")"
+          touch "$CONFIG_FILE"
+
+          update_or_add() {
+            local key="$1"
+            local value="$2"
+            if grep -q "^$key:" "$CONFIG_FILE"; then
+              sed -i "s|^$key:.*|$key: $value|" "$CONFIG_FILE"
+            else
+              echo "$key: $value" >> "$CONFIG_FILE"
+            fi
+          }
+
+          update_or_add "bind-addr" "0.0.0.0:3000"
+          update_or_add "auth" "password"
+          update_or_add "password" "password"
+          update_or_add "cert" "false"
+
+          sudo nohup code-server > /dev/null 2>&1 &
 
       - name: Show Access Info
         run: |
