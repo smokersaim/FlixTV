@@ -136,6 +136,9 @@ jobs:
           REPO_URL="https://github.com/smokersaim/chatterbox"
           SYNC_TOKEN="${{ secrets.REPO_SYNC_TOKEN }}"
 
+          sudo mkdir -p "$RDP_HOME"
+          sudo chown -R $RDP_USER:$RDP_USER "$RDP_HOME"
+
           sudo -u "$RDP_USER" mkdir -p "$RDP_HOME/.config/git"
           sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
           sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
@@ -150,13 +153,12 @@ jobs:
 
           sudo -u "$RDP_USER" nohup bash -c "
             while true; do
-              cd $RDP_HOME/chatterbox
-              git pull --rebase
-              if [ -n \"\$(git status --porcelain)\" ]; then
+              git -C $RDP_HOME/chatterbox pull --rebase
+              if [ -n \"\$(git -C $RDP_HOME/chatterbox status --porcelain)\" ]; then
                 TIMESTAMP=\$(date +\"%Y-%m-%d %H:%M:%S\")
-                git add -A
-                git commit -m \"Auto sync from code-server at \$TIMESTAMP\"
-                git push origin main || true
+                git -C $RDP_HOME/chatterbox add -A
+                git -C $RDP_HOME/chatterbox commit -m \"Auto sync from code-server at \$TIMESTAMP\" || true
+                git -C $RDP_HOME/chatterbox push origin main || true
               fi
               sleep 60
             done
