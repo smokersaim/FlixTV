@@ -50,29 +50,19 @@ jobs:
           sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Ensure Code Server Directories
-        run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          sudo mkdir -p "/home/$RDP_USER/.local/share/code-server/User"
-          sudo mkdir -p "/home/$RDP_USER/.config/code-server"
-          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.local/share/code-server"
-          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/code-server"
-
       - name: Install Code Server Extensions
         run: |
-          export RDP_USER="${{ secrets.RDP_USER }}"
-          sudo -u "$RDP_USER" code-server --install-extension golang.go
-          sudo -u "$RDP_USER" code-server --install-extension esbenp.prettier-vscode
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.python
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.debugpy
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.vscode-python-envs
-          sudo -u "$RDP_USER" code-server --install-extension ritwickdey.LiveServer
-          sudo -u "$RDP_USER" code-server --install-extension google.geminicodeassist
+          sudo code-server --install-extension golang.go
+          sudo code-server --install-extension esbenp.prettier-vscode
+          sudo code-server --install-extension ms-python.python
+          sudo code-server --install-extension ms-python.debugpy
+          sudo code-server --install-extension ms-python.vscode-python-envs
+          sudo code-server --install-extension ritwickdey.LiveServer
+          sudo code-server --install-extension google.geminicodeassist
 
       - name: Start Code Server
         run: |
-          export RDP_USER="${{ secrets.RDP_USER }}"
-          sudo -u "$RDP_USER" nohup code-server "/home/$RDP_USER" \
+          sudo nohup code-server "/home/$RDP_USER" \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
@@ -81,10 +71,10 @@ jobs:
       - name: Clone Repository and Enable Auto Sync
         run: |
           RDP_USER="${{ secrets.RDP_USER }}"
-          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox /home/$RDP_USER/chatterbox
-          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
-          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
-          sudo -u "$RDP_USER" nohup bash -c '
+          sudo git clone https://github.com/smokersaim/chatterbox /home/$RDP_USER/chatterbox
+          sudo git config --global user.name "Smoker Saim"
+          sudo git config --global user.email "smoker.saim@gmail.com"
+          sudo nohup bash -c '
           while true; do
             cd /home/$RDP_USER/chatterbox
             git pull --rebase
