@@ -14,7 +14,7 @@ jobs:
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt-get update -y
           sudo apt-get install -y openssh-server git curl software-properties-common
-          sudo apt install -y python3.13 python3.13-venv python3.13-dev python3.13-tk python3.13-lib2to3
+          sudo apt install -y python3.13 python3.13-venv python3.13-dev python3.13-tk 
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
           sudo systemctl enable ssh
           sudo systemctl start ssh
