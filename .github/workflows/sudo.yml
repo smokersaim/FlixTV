@@ -52,14 +52,15 @@ jobs:
 
       - name: Install Code Server Extensions
         run: |
-          sudo code-server --install-extension golang.go
-          sudo code-server --install-extension esbenp.prettier-vscode
-          sudo code-server --install-extension ms-python.python
-          sudo code-server --install-extension ms-python.debugpy
-          sudo code-server --install-extension ms-python.vscode-python-envs
-          sudo code-server --install-extension ritwickdey.LiveServer
-          sudo code-server --install-extension miguelsolorio.fluent-icons
-          sudo code-server --install-extension google.geminicodeassist
+          sudo code-server --install-extension golang.go --force
+          sudo code-server --install-extension esbenp.prettier-vscode --force
+          sudo code-server --install-extension ms-python.python --force
+          sudo code-server --install-extension ms-python.debugpy --force
+          sudo code-server --install-extension ms-python.vscode-python-envs --force
+          sudo code-server --install-extension ritwickdey.LiveServer --force
+          sudo code-server --install-extension miguelsolorio.fluent-icons --force
+          sudo code-server --install-extension google.geminicodeassist --force
+          sudo code-server --install-extension saoudrizwan.claude-dev@3.35.1 --force
 
       - name: Configure Code Server Settings
         run: |
@@ -131,25 +132,23 @@ jobs:
       - name: Start Code Server
         run: |
           CONFIG_FILE="/home/runner/.config/code-server/config.yaml"
-
-          mkdir -p "$(dirname "$CONFIG_FILE")"
-          touch "$CONFIG_FILE"
-
+          sudo mkdir -p "$(dirname "$CONFIG_FILE")"
+          if [ -f "$CONFIG_FILE" ]; then
+            sudo cat "$CONFIG_FILE"
+          fi
           update_or_add() {
             local key="$1"
             local value="$2"
-            if grep -q "^$key:" "$CONFIG_FILE"; then
-              sed -i "s|^$key:.*|$key: $value|" "$CONFIG_FILE"
+            if sudo grep -q "^$key:" "$CONFIG_FILE"; then
+              sudo sed -i "s|^$key:.*|$key: $value|" "$CONFIG_FILE"
             else
-              echo "$key: $value" >> "$CONFIG_FILE"
+              echo "$key: $value" | sudo tee -a "$CONFIG_FILE" > /dev/null
             fi
           }
-
           update_or_add "bind-addr" "0.0.0.0:3000"
           update_or_add "auth" "password"
           update_or_add "password" "password"
           update_or_add "cert" "false"
-
           sudo nohup code-server > /dev/null 2>&1 &
 
       - name: Show Access Info
