@@ -121,7 +121,7 @@ jobs:
           mkdir -p /home/runner/.ngrok2
           echo "authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}" > /home/runner/.ngrok2/ngrok.yml
           chown -R runner:runner /home/runner/.ngrok2
-          sudo -u runner nohup ngrok http 3000 --config /home/runner/.ngrok2/ngrok.yml > /home/runner/ngrok.log 2>&1 &
+          sudo -u runner nohup ngrok http 3000 --config /home/runner/.ngrok2/ngrok.yml --hostname=hot-mainly-locust.ngrok-free.app > /home/runner/ngrok.log 2>&1 &
 
       - name: Clone Repository and Enable Auto Sync
         run: |
