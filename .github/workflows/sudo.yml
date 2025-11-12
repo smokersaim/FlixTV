@@ -22,27 +22,30 @@ jobs:
           echo "${{ secrets.RDP_USER }} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${{ secrets.RDP_USER }}
           sudo chmod 0440 /etc/sudoers.d/${{ secrets.RDP_USER }}
 
+      - name: Upgrade Python to 3.12
+        run: |
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt update -y
+          sudo apt install -y python3.12 python3.12-venv python3.12-distutils
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+          python3 --version
+
       - name: Install Code Server
         run: |
           curl -fsSL https://code-server.dev/install.sh | sh
-          nohup sudo code-server --bind-addr 0.0.0.0:3000 --auth none --cert false > /dev/null 2>&1 &
-
-      - name: Configure Code Server Settings & Extensions
-        run: |
-          sudo mkdir -p ~/.local/share/code-server/User
-          sudo tee ~/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
+          sudo mkdir -p /home/${{ secrets.RDP_USER }}/.local/share/code-server/User
+          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} /home/${{ secrets.RDP_USER }}/.local
+          sudo -u ${{ secrets.RDP_USER }} tee /home/${{ secrets.RDP_USER }}/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
             "workbench.colorTheme": "Default Dark Modern",
-            "workbench.productIconTheme": "fluent-icons",
             "workbench.statusBar.visible": false,
             "workbench.editorLargeFileConfirmation": 10024,
             "workbench.editor.showTabs": "multiple",
             "workbench.layoutControl.enabled": false,
             "workbench.activityBar.location": "top",
             "workbench.tree.indent": 14,
-            "workbench.iconTheme": "icons",
             "workbench.secondarySideBar.defaultVisibility": "visible",
             "workbench.colorCustomizations": {
               "inlineparameters.annotationBackground": "#282AA3600",
@@ -50,8 +53,6 @@ jobs:
               "scrollbar.shadow": "#24292e00"
             },
             "breadcrumbs.enabled": false,
-            "breadcrumbs.symbolPath": "off",
-            "breadcrumbs.filePath": "on",
             "window.menuBarVisibility": "toggle",
             "explorer.confirmDragAndDrop": false,
             "explorer.confirmDelete": true,
@@ -67,7 +68,6 @@ jobs:
             "editor.formatOnSave": true,
             "editor.formatOnPaste": true,
             "editor.defaultFormatter": "esbenp.prettier-vscode",
-            "editor.codeActionsOnSave": {},
             "editor.fontLigatures": "'calt', 'ss01'",
             "editor.glyphMargin": true,
             "editor.folding": true,
@@ -84,11 +84,9 @@ jobs:
               "horizontalScrollbarSize": 8
             },
             "diffEditor.codeLens": true,
-            "terminal.integrated.defaultProfile.windows": "Git Bash",
             "terminal.integrated.fontFamily": "Cascadia Code PL",
             "terminal.integrated.fontSize": 14,
             "terminal.integrated.lineHeight": 1.2,
-            "terminal.integrated.enableMultiLinePasteWarning": "always",
             "extensions.autoRestart": true,
             "extensions.ignoreRecommendations": true,
             "extensions.closeExtensionDetailsOnViewChange": true,
@@ -101,14 +99,21 @@ jobs:
             "update.showReleaseNotes": false
           }
           EOF
-          sudo code-server --install-extension miguelsolorio.fluent-icons
-          sudo code-server --install-extension golang.go
-          sudo code-server --install-extension esbenp.prettier-vscode
-          sudo code-server --install-extension ms-python.python
-          sudo code-server --install-extension ms-python.debugpy
-          sudo code-server --install-extension ms-python.vscode-python-envs
-          sudo code-server --install-extension ritwickdey.LiveServer
-          sudo code-server --install-extension google.geminicodeassist
+          nohup sudo -u ${{ secrets.RDP_USER }} code-server /home/${{ secrets.RDP_USER }}/chatterbox \
+            --bind-addr 0.0.0.0:3000 \
+            --auth password \
+            --password password \
+            --cert false > /dev/null 2>&1 &
+
+      - name: Install Extensions
+        run: |
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension golang.go
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension esbenp.prettier-vscode
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.python
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.debugpy
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.vscode-python-envs
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ritwickdey.LiveServer
+          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension google.geminicodeassist
 
       - name: Install and Configure Ngrok
         run: |
@@ -127,8 +132,8 @@ jobs:
 
       - name: Clone Repository and Enable Auto Sync
         run: |
-          git clone https://github.com/smokersaim/chatterbox ~/chatterbox
-          cd ~/chatterbox
+          sudo -u ${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox /home/${{ secrets.RDP_USER }}/chatterbox
+          cd /home/${{ secrets.RDP_USER }}/chatterbox
           git config --global user.name "Smoker Saim"
           git config --global user.email "smoker.saim@gmail.com"
           if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
@@ -136,7 +141,7 @@ jobs:
           fi
           nohup bash -c '
           while true; do
-            cd ~/chatterbox
+            cd /home/${{ secrets.RDP_USER }}/chatterbox
             git pull --rebase
             if [ -n "$(git status --porcelain)" ]; then
               TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
@@ -153,6 +158,7 @@ jobs:
           echo "🖥️ Access Information"
           echo "--------------------------------"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
+          echo "Auth: auth | Password: password"
           echo "Tailscale IP: $TAILSCALE_IP"
           echo "SSH User: ${{ secrets.RDP_USER }}"
           echo "SSH Pass: ${{ secrets.RDP_PASS }}"
