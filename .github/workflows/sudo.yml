@@ -129,13 +129,43 @@ jobs:
           }
           EOF
 
+      - name: Clone Repository and Enable Auto Sync Setup
+        run: |
+          RDP_USER="${{ secrets.RDP_USER }}"
+          RDP_HOME="/home/$RDP_USER"
+          REPO_URL="https://github.com/smokersaim/chatterbox"
+          SYNC_TOKEN="${{ secrets.REPO_SYNC_TOKEN }}"
+
+          sudo -u "$RDP_USER" mkdir -p "$RDP_HOME/.config/git"
+          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
+          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
+
+          if [ ! -d "$RDP_HOME/chatterbox/.git" ]; then
+            sudo -u "$RDP_USER" git clone "$REPO_URL" "$RDP_HOME/chatterbox"
+          fi
+
+          if [ -n "$SYNC_TOKEN" ]; then
+            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin "https://x-access-token:$SYNC_TOKEN@github.com/smokersaim/chatterbox.git"
+          fi
+
+          sudo -u "$RDP_USER" nohup bash -c "
+            while true; do
+              cd $RDP_HOME/chatterbox
+              git pull --rebase
+              if [ -n \"\$(git status --porcelain)\" ]; then
+                TIMESTAMP=\$(date +\"%Y-%m-%d %H:%M:%S\")
+                git add -A
+                git commit -m \"Auto sync from code-server at \$TIMESTAMP\"
+                git push origin main || true
+              fi
+              sleep 60
+            done
+          " > /dev/null 2>&1 &
+
       - name: Start Code Server
         run: |
           CONFIG_FILE="/home/runner/.config/code-server/config.yaml"
           sudo mkdir -p "$(dirname "$CONFIG_FILE")"
-          if [ -f "$CONFIG_FILE" ]; then
-            sudo cat "$CONFIG_FILE"
-          fi
           update_or_add() {
             local key="$1"
             local value="$2"
@@ -149,20 +179,12 @@ jobs:
           update_or_add "auth" "password"
           update_or_add "password" "password"
           update_or_add "cert" "false"
-          sudo nohup code-server > /dev/null 2>&1 &
+          sudo nohup code-server "/home/${{ secrets.RDP_USER }}/chatterbox" > /dev/null 2>&1 &
 
       - name: Show Access Info
         run: |
-          TAILSCALE_IP=$(tailscale ip -4)
-          echo "🖥️ Access Information"
-          echo "--------------------------------"
+          echo "Tailscale IP: $(tailscale ip -4)"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
-          echo "Auth: password | Password: password"
-          echo "Tailscale IP: $TAILSCALE_IP"
-          echo "SSH User: ${{ secrets.RDP_USER }}"
-          echo "SSH Pass: ${{ secrets.RDP_PASS }}"
-          echo "Repo auto-sync: enabled (every 1 min)"
-          echo "--------------------------------"
 
       - name: Keep Alive
         run: sudo sleep 21600
