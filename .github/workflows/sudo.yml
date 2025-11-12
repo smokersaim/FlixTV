@@ -31,10 +31,15 @@ jobs:
 
       - name: Install Code Server
         run: |
-          curl -fsSL https://code-server.dev/install.sh | sh
-          sudo mkdir -p /home/${{ secrets.RDP_USER }}/.local/share/code-server/User
-          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} /home/${{ secrets.RDP_USER }}/.local
-          sudo -u ${{ secrets.RDP_USER }} tee /home/${{ secrets.RDP_USER }}/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
+          sudo curl -fsSL https://code-server.dev/install.sh | sh
+          export HOME=/home/${{ secrets.RDP_USER }}
+          sudo mkdir -p $HOME/.local/share/code-server/User
+          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} $HOME/.local
+
+      - name: Configure Code Server Settings & Extensions
+        run: |
+          export HOME=/home/${{ secrets.RDP_USER }}
+          sudo -u ${{ secrets.RDP_USER }} tee $HOME/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
@@ -98,21 +103,22 @@ jobs:
             "update.showReleaseNotes": false
           }
           EOF
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension golang.go
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension esbenp.prettier-vscode
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.python
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.debugpy
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.vscode-python-envs
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ritwickdey.LiveServer
+          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension google.geminicodeassist
+
+      - name: Start Code Server
+        run: |
+          export HOME=/home/${{ secrets.RDP_USER }}
           nohup sudo -u ${{ secrets.RDP_USER }} code-server /home/${{ secrets.RDP_USER }}/chatterbox \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
             --cert false > /dev/null 2>&1 &
-
-      - name: Install Extensions
-        run: |
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension golang.go
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension esbenp.prettier-vscode
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.python
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.debugpy
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.vscode-python-envs
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension ritwickdey.LiveServer
-          sudo -u ${{ secrets.RDP_USER }} code-server --install-extension google.geminicodeassist
 
       - name: Install and Configure Ngrok
         run: |
@@ -131,8 +137,9 @@ jobs:
 
       - name: Clone Repository and Enable Auto Sync
         run: |
-          sudo -u ${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox /home/${{ secrets.RDP_USER }}/chatterbox
-          cd /home/${{ secrets.RDP_USER }}/chatterbox
+          export HOME=/home/${{ secrets.RDP_USER }}
+          sudo -u ${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox $HOME/chatterbox
+          cd $HOME/chatterbox
           git config --global user.name "Smoker Saim"
           git config --global user.email "smoker.saim@gmail.com"
           if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
@@ -140,7 +147,7 @@ jobs:
           fi
           nohup bash -c '
           while true; do
-            cd /home/${{ secrets.RDP_USER }}/chatterbox
+            cd $HOME/chatterbox
             git pull --rebase
             if [ -n "$(git status --porcelain)" ]; then
               TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
