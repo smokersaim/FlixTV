@@ -11,7 +11,7 @@ jobs:
       - name: Create User and Enable SSH
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y openssh-server git curl
+          sudo apt-get install -y openssh-server git curl software-properties-common
           sudo systemctl enable ssh
           sudo systemctl start ssh
           if ! id -u "${{ secrets.RDP_USER }}" >/dev/null 2>&1; then
@@ -24,22 +24,21 @@ jobs:
 
       - name: Install Python 3.12
         run: |
-          sudo apt update -y
-          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-lib2to3 python3.12-tk
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt update
+          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-tk python3.12-lib2to3
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
           python3 --version
 
       - name: Install Code Server
         run: |
           sudo curl -fsSL https://code-server.dev/install.sh | sh
-          export HOME=/home/${{ secrets.RDP_USER }}
-          sudo mkdir -p $HOME/.local/share/code-server/User
-          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} $HOME/.local
+          sudo mkdir -p /home/${{ secrets.RDP_USER }}/.local/share/code-server/User
+          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} /home/${{ secrets.RDP_USER }}/.local
 
-      - name: Configure Code Server Settings & Extensions
+      - name: Configure Code Server Settings & Install Extensions
         run: |
-          export HOME=/home/${{ secrets.RDP_USER }}
-          sudo -u ${{ secrets.RDP_USER }} tee $HOME/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} tee /home/${{ secrets.RDP_USER }}/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
@@ -103,18 +102,17 @@ jobs:
             "update.showReleaseNotes": false
           }
           EOF
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension golang.go
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension esbenp.prettier-vscode
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.python
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.debugpy
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ms-python.vscode-python-envs
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension ritwickdey.LiveServer
-          sudo -u ${{ secrets.RDP_USER }} HOME=$HOME code-server --install-extension google.geminicodeassist
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension golang.go
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension esbenp.prettier-vscode
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension ms-python.python
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension ms-python.debugpy
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension ms-python.vscode-python-envs
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension ritwickdey.LiveServer
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} code-server --install-extension google.geminicodeassist
 
       - name: Start Code Server
         run: |
-          export HOME=/home/${{ secrets.RDP_USER }}
-          nohup sudo -u ${{ secrets.RDP_USER }} code-server /home/${{ secrets.RDP_USER }}/chatterbox \
+          sudo -H -u ${{ secrets.RDP_USER }} nohup HOME=/home/${{ secrets.RDP_USER }} code-server /home/${{ secrets.RDP_USER }}/chatterbox \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
@@ -126,7 +124,7 @@ jobs:
           echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update && sudo apt install -y ngrok
           sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          nohup sudo ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
+          sudo -H -u ${{ secrets.RDP_USER }} nohup HOME=/home/${{ secrets.RDP_USER }} ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
       - name: Install and Configure Tailscale
         run: |
@@ -137,17 +135,16 @@ jobs:
 
       - name: Clone Repository and Enable Auto Sync
         run: |
-          export HOME=/home/${{ secrets.RDP_USER }}
-          sudo -u ${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox $HOME/chatterbox
-          cd $HOME/chatterbox
+          sudo -H -u ${{ secrets.RDP_USER }} HOME=/home/${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox /home/${{ secrets.RDP_USER }}/chatterbox
+          cd /home/${{ secrets.RDP_USER }}/chatterbox
           git config --global user.name "Smoker Saim"
           git config --global user.email "smoker.saim@gmail.com"
           if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
             git remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
           fi
-          nohup bash -c '
+          sudo -H -u ${{ secrets.RDP_USER }} nohup bash -c '
           while true; do
-            cd $HOME/chatterbox
+            cd /home/${{ secrets.RDP_USER }}/chatterbox
             git pull --rebase
             if [ -n "$(git status --porcelain)" ]; then
               TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
