@@ -106,7 +106,6 @@ jobs:
           sudo code-server --install-extension esbenp.prettier-vscode
           sudo code-server --install-extension ms-python.python
           sudo code-server --install-extension ms-python.debugpy
-          sudo code-server --install-extension ms-python.vscode-pylance
           sudo code-server --install-extension ms-python.vscode-python-envs
           sudo code-server --install-extension ritwickdey.LiveServer
           sudo code-server --install-extension google.geminicodeassist
