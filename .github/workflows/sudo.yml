@@ -31,6 +31,37 @@ jobs:
           echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
           sudo chmod 0440 /etc/sudoers.d/$RDP_USER
 
+      - name: Clone Repository and Enable Auto Sync Setup
+        run: |
+          RDP_USER="${{ secrets.RDP_USER }}"
+          RDP_HOME="/home/$RDP_USER"
+          REPO_URL="https://github.com/smokersaim/chatterbox"
+          SYNC_TOKEN="${{ secrets.REPO_SYNC_TOKEN }}"
+
+          sudo git clone "$REPO_URL" "$RDP_HOME/chatterbox"
+          cd "$RDP_HOME/chatterbox"
+
+          git config --global user.name "Smoker Saim"
+          git config --global user.email "smoker.saim@gmail.com"
+
+          if [ -n "$SYNC_TOKEN" ]; then
+            git remote set-url origin https://x-access-token:$SYNC_TOKEN@github.com/smokersaim/chatterbox.git
+          fi
+
+          nohup bash -c '
+          while true; do
+            cd "$RDP_HOME/chatterbox"
+            git pull --rebase
+            if [ -n "$(git status --porcelain)" ]; then
+              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+              git add -A
+              git commit -m "Auto sync from code-server at $TIMESTAMP"
+              git push origin main || true
+            fi
+            sleep 60
+          done
+          ' > /dev/null 2>&1 &
+
       - name: Install Tools
         run: |
           sudo curl -fsSL https://tailscale.com/install.sh | sh
@@ -128,42 +159,6 @@ jobs:
             "update.showReleaseNotes": false
           }
           EOF
-
-      - name: Clone Repository and Enable Auto Sync Setup
-        run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          RDP_HOME="/home/$RDP_USER"
-          REPO_URL="https://github.com/smokersaim/chatterbox"
-          SYNC_TOKEN="${{ secrets.REPO_SYNC_TOKEN }}"
-
-          sudo mkdir -p "$RDP_HOME"
-          sudo chown -R "$RDP_USER:$RDP_USER" "$RDP_HOME"
-
-          sudo -u "$RDP_USER" mkdir -p "$RDP_HOME/.config/git"
-          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
-          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
-
-          if [ ! -d "$RDP_HOME/chatterbox/.git" ]; then
-            sudo -u "$RDP_USER" git clone "$REPO_URL" "$RDP_HOME/chatterbox"
-          fi
-
-          if [ -n "$SYNC_TOKEN" ]; then
-            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin "https://x-access-token:$SYNC_TOKEN@github.com/smokersaim/chatterbox.git"
-          fi
-
-          sudo -u "$RDP_USER" nohup bash -c "
-            cd $RDP_HOME/chatterbox
-            while true; do
-              git pull --rebase
-              if [ -n \"\$(git status --porcelain)\" ]; then
-                TIMESTAMP=\$(date +\"%Y-%m-%d %H:%M:%S\")
-                git add -A
-                git commit -m \"Auto sync from code-server at \$TIMESTAMP\" || true
-                git push origin main || true
-              fi
-              sleep 60
-            done
-          " > /dev/null 2>&1 &
 
       - name: Start Code Server
         run: |
