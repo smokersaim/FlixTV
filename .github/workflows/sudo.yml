@@ -130,11 +130,12 @@ jobs:
 
       - name: Start Code Server
         run: |
-          sudo echo "bind-addr: 0.0.0.0:3000" >> /home/runner/.config/code-server/config.yaml
-          sudo echo "auth: password" >> /home/runner/.config/code-server/config.yaml
-          sudo echo "password: password" >> /home/runner/.config/code-server/config.yaml
-          sudo echo "cert: false" >> /home/runner/.config/code-server/config.yaml
-          sudo nohup code-server "/home/${{ secrets.RDP_USER }}/chatterbox" --config /home/runner/.config/code-server/config.yaml > /dev/null 2>&1 &
+          RDP_USER="${{ secrets.RDP_USER }}"
+          sudo echo "bind-addr: 0.0.0.0:3000" >> /home/$RDP_USER/.config/code-server/config.yaml
+          sudo echo "auth: password" >> /home/$RDP_USER/.config/code-server/config.yaml
+          sudo echo "password: password" >> /home/$RDP_USER/.config/code-server/config.yaml
+          sudo echo "cert: false" >> /home/$RDP_USER/.config/code-server/config.yaml
+          sudo nohup code-server "/home/$RDP_USER/chatterbox" --config /home/$RDP_USER/.config/code-server/config.yaml > /dev/null 2>&1 &
 
       - name: Clone Repository and Enable Auto Sync Setup
         run: |
