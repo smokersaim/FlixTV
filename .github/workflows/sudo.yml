@@ -8,21 +8,33 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Create User and Enable SSH
+      - name: 👤 Create User and Enable SSH
+        # The user creation must run as 'sudo' (which the default runner user can do)
         run: |
           sudo apt-get update -y
           sudo apt-get install -y openssh-server git curl software-properties-common
           sudo systemctl enable ssh
           sudo systemctl start ssh
-          if ! id -u "${{ secrets.RDP_USER }}" >/dev/null 2>&1; then
-            sudo useradd -m -s /bin/bash "${{ secrets.RDP_USER }}"
+          
+          RDP_USER="${{ secrets.RDP_USER }}"
+          RDP_PASS="${{ secrets.RDP_PASS }}"
+          
+          # 1. Create user if it doesn't exist
+          if ! id -u "$RDP_USER" >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash "$RDP_USER"
           fi
-          echo "${{ secrets.RDP_USER }}:${{ secrets.RDP_PASS }}" | sudo chpasswd
-          sudo usermod -aG sudo "${{ secrets.RDP_USER }}"
-          echo "${{ secrets.RDP_USER }} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${{ secrets.RDP_USER }}
-          sudo chmod 0440 /etc/sudoers.d/${{ secrets.RDP_USER }}
+          
+          # 2. Set password
+          echo "$RDP_USER:$RDP_PASS" | sudo chpasswd
+          
+          # 3. Grant sudo access without password
+          sudo usermod -aG sudo "$RDP_USER"
+          echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
+          sudo chmod 0440 /etc/sudoers.d/$RDP_USER
 
-      - name: Install Python 3.12
+      ---
+
+      - name: 🐍 Install Python 3.12
         run: |
           sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt update
@@ -30,15 +42,66 @@ jobs:
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
           python3 --version
 
-      - name: Install Code Server
+      ---
+
+      - name: ⚙️ Install Code Server
+        # Install Code Server system-wide (as sudo/root)
         run: |
           sudo curl -fsSL https://code-server.dev/install.sh | sh
-          sudo -u ${{ secrets.RDP_USER }} mkdir -p /home/${{ secrets.RDP_USER }}/.local/share/code-server/User
-          sudo chown -R ${{ secrets.RDP_USER }}:${{ secrets.RDP_USER }} /home/${{ secrets.RDP_USER }}/.local
 
-      - name: Configure Code Server Settings & Install Extensions
+      ---
+      
+      - name: 📁 Clone Repository and Enable Auto Sync Setup
+        # Clone the repository and set up git configs as the RDP user
         run: |
-          sudo -u ${{ secrets.RDP_USER }} tee /home/${{ secrets.RDP_USER }}/.local/share/code-server/User/settings.json > /dev/null <<'EOF'
+          RDP_USER="${{ secrets.RDP_USER }}"
+          RDP_HOME="/home/$RDP_USER"
+          
+          # Clone the repository
+          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
+          
+          # Set global git config for the RDP user
+          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
+          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
+          
+          # Set up authenticated remote URL if token is provided
+          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
+            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
+          fi
+          
+          # Start the auto-sync loop as the RDP user in the background
+          sudo -u "$RDP_USER" nohup bash -c '
+          while true; do
+            cd /home/${{ secrets.RDP_USER }}/chatterbox
+            git pull --rebase
+            if [ -n "$(git status --porcelain)" ]; then
+              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+              git add -A
+              git commit -m "Auto sync from code-server at $TIMESTAMP"
+              git push origin main || true
+            fi
+            sleep 60
+          done
+          ' > /dev/null 2>&1 &
+
+      ---
+
+      - name: 📝 Configure Code Server Settings & Install Extensions
+        # Run all Code Server operations as the RDP user (`sudo -u`)
+        run: |
+          RDP_USER="${{ secrets.RDP_USER }}"
+          CODE_SERVER_USER_DIR="/home/$RDP_USER/.local/share/code-server/User"
+
+          # Ensure the required directories exist and are owned by the RDP user
+          sudo mkdir -p "$CODE_SERVER_USER_DIR"
+          sudo chown -R "$RDP_USER":"$RDP_USER" "/home/$RDP_USER/.local"
+          # Also ensure the config dir is owned by the user, this is where your original error was coming from
+          # Code-server will try to use ~/.config/code-server, so let's make sure the user owns it
+          sudo mkdir -p "/home/$RDP_USER/.config"
+          sudo chown -R "$RDP_USER":"$RDP_USER" "/home/$RDP_USER/.config"
+
+          # Write settings.json as the RDP user
+          sudo -u "$RDP_USER" tee "$CODE_SERVER_USER_DIR/settings.json" > /dev/null <<'EOF'
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
@@ -103,71 +166,62 @@ jobs:
           }
           EOF
 
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension golang.go
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension esbenp.prettier-vscode
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.python
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.debugpy
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension ms-python.vscode-python-envs
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension ritwickdey.LiveServer
-          sudo -H -u ${{ secrets.RDP_USER }} code-server --install-extension google.geminicodeassist
+          # Install extensions as the RDP user
+          sudo -u "$RDP_USER" code-server --install-extension golang.go
+          sudo -u "$RDP_USER" code-server --install-extension esbenp.prettier-vscode
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.python
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.debugpy
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.vscode-python-envs
+          sudo -u "$RDP_USER" code-server --install-extension ritwickdey.LiveServer
+          sudo -u "$RDP_USER" code-server --install-extension google.geminicodeassist
 
-      - name: Start Code Server
+      ---
+
+      - name: 🚀 Start Code Server
+        # Start Code Server as the RDP user
         run: |
-          sudo -H -u ${{ secrets.RDP_USER }} nohup code-server /home/${{ secrets.RDP_USER }}/chatterbox \
+          sudo -u ${{ secrets.RDP_USER }} nohup code-server /home/${{ secrets.RDP_USER }}/chatterbox \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
             --cert false > /dev/null 2>&1 &
 
-      - name: Install and Configure Ngrok
+      ---
+
+      - name: 🌐 Install and Configure Ngrok
         run: |
           curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
           echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update && sudo apt install -y ngrok
+          # Ngrok config is best done system-wide or for the runner user, as it's just for auth token
           sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          sudo -H -u ${{ secrets.RDP_USER }} nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
+          # Start ngrok as the RDP user
+          sudo -u ${{ secrets.RDP_USER }} nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Install and Configure Tailscale
+      ---
+
+      - name: 🔒 Install and Configure Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
           TSIP=$(sudo tailscale ip -4 | head -n1)
           echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
 
-      - name: Clone Repository and Enable Auto Sync
-        run: |
-          sudo -H -u ${{ secrets.RDP_USER }} git clone https://github.com/smokersaim/chatterbox /home/${{ secrets.RDP_USER }}/chatterbox
-          cd /home/${{ secrets.RDP_USER }}/chatterbox
-          git config --global user.name "Smoker Saim"
-          git config --global user.email "smoker.saim@gmail.com"
-          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
-            git remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
-          fi
-          sudo -H -u ${{ secrets.RDP_USER }} nohup bash -c '
-          while true; do
-            cd /home/${{ secrets.RDP_USER }}/chatterbox
-            git pull --rebase
-            if [ -n "$(git status --porcelain)" ]; then
-              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-              git add -A
-              git commit -m "Auto sync from code-server at $TIMESTAMP"
-              git push origin main || true
-            fi
-            sleep 60
-          done
-          ' > /dev/null 2>&1 &
+      ---
 
-      - name: Show Access Info
+      - name: ℹ️ Show Access Info
         run: |
           echo "🖥️ Access Information"
           echo "--------------------------------"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
-          echo "Auth: auth | Password: password"
+          echo "Auth: password | Password: password" # Note: The password in the previous step was 'password'
           echo "Tailscale IP: $TAILSCALE_IP"
           echo "SSH User: ${{ secrets.RDP_USER }}"
           echo "SSH Pass: ${{ secrets.RDP_PASS }}"
           echo "Repo auto-sync: enabled (every 1 min)"
           echo "--------------------------------"
 
-      - name: Keep Alive for 6 Hours
+      ---
+
+      - name: ⏳ Keep Alive for 6 Hours
         run: sudo sleep 21600
