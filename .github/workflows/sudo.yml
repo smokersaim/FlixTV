@@ -62,10 +62,8 @@ jobs:
 
       - name: Start Code Server
         run: |
-          sudo nohup code-server "/home/$RDP_USER" \
+          sudo nohup code-server \
             --bind-addr 0.0.0.0:3000 \
-            --auth password \
-            --password password \
             --cert false > /dev/null 2>&1 &
 
       - name: Clone Repository and Enable Auto Sync
