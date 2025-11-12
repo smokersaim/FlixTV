@@ -8,6 +8,32 @@ jobs:
     timeout-minutes: 360
 
     steps:
+      - name: Create User and Enable SSH
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y openssh-server git curl software-properties-common
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+
+          RDP_USER="${{ secrets.RDP_USER }}"
+          RDP_PASS="${{ secrets.RDP_PASS }}"
+
+          if ! id -u "$RDP_USER" >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash "$RDP_USER"
+          fi
+
+          echo "$RDP_USER:$RDP_PASS" | sudo chpasswd
+          sudo usermod -aG sudo "$RDP_USER"
+          echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
+          sudo chmod 0440 /etc/sudoers.d/$RDP_USER
+
+      - name: Install and Configure Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
+          TSIP=$(sudo tailscale ip -4 | head -n1)
+          echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
+
       - name: Install Python 3.12
         run: |
           sudo add-apt-repository ppa:deadsnakes/ppa -y
@@ -118,10 +144,8 @@ jobs:
             && sudo apt update \
             && sudo apt install -y ngrok
 
-          mkdir -p /home/runner/.ngrok2
-          echo "authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}" > /home/runner/.ngrok2/ngrok.yml
-          chown -R runner:runner /home/runner/.ngrok2
-          sudo -u runner nohup ngrok http 3000 --config /home/runner/.ngrok2/ngrok.yml --hostname=hot-mainly-locust.ngrok-free.app > /home/runner/ngrok.log 2>&1 &
+          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
       - name: Clone Repository and Enable Auto Sync
         run: |
@@ -148,6 +172,9 @@ jobs:
           echo "--------------------------------"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
           echo "Auth: password | Password: password"
+          echo "Tailscale IP: $TAILSCALE_IP"
+          echo "SSH User: ${{ secrets.RDP_USER }}"
+          echo "SSH Pass: ${{ secrets.RDP_PASS }}"
           echo "Repo auto-sync: enabled (every 1 min)"
           echo "--------------------------------"
 
