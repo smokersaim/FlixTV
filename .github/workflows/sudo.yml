@@ -55,10 +55,12 @@ jobs:
           RDP_USER="${{ secrets.RDP_USER }}"
           sudo mkdir -p "/home/$RDP_USER/.local/share/code-server/User"
           sudo mkdir -p "/home/$RDP_USER/.config/code-server"
+          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.local/share/code-server"
+          sudo chown -R "$RDP_USER:$RDP_USER" "/home/$RDP_USER/.config/code-server"
 
       - name: Install Code Server Extensions
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
+          export RDP_USER="${{ secrets.RDP_USER }}"
           sudo -u "$RDP_USER" code-server --install-extension golang.go
           sudo -u "$RDP_USER" code-server --install-extension esbenp.prettier-vscode
           sudo -u "$RDP_USER" code-server --install-extension ms-python.python
@@ -69,7 +71,7 @@ jobs:
 
       - name: Start Code Server
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
+          export RDP_USER="${{ secrets.RDP_USER }}"
           sudo -u "$RDP_USER" nohup code-server "/home/$RDP_USER" \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
@@ -84,7 +86,7 @@ jobs:
           sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
           sudo -u "$RDP_USER" nohup bash -c '
           while true; do
-            cd /home/runner/chatterbox
+            cd /home/$RDP_USER/chatterbox
             git pull --rebase
             if [ -n "$(git status --porcelain)" ]; then
               TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
@@ -98,6 +100,7 @@ jobs:
 
       - name: Show Access Info
         run: |
+          TAILSCALE_IP=$(tailscale ip -4)
           echo "🖥️ Access Information"
           echo "--------------------------------"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
