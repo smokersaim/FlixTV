@@ -1,4 +1,4 @@
-name: sudo-cry
+name: wronged
 on:
   workflow_dispatch:
 
