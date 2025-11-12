@@ -11,7 +11,7 @@ jobs:
       - name: Create User and Enable SSH
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y openssh-server git
+          sudo apt-get install -y openssh-server git curl
           sudo systemctl enable ssh
           sudo systemctl start ssh
           if ! id -u "${{ secrets.RDP_USER }}" >/dev/null 2>&1; then
@@ -22,11 +22,10 @@ jobs:
           echo "${{ secrets.RDP_USER }} ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/${{ secrets.RDP_USER }}
           sudo chmod 0440 /etc/sudoers.d/${{ secrets.RDP_USER }}
 
-      - name: Upgrade Python to 3.12
+      - name: Install Python 3.12
         run: |
-          sudo add-apt-repository ppa:deadsnakes/ppa -y
           sudo apt update -y
-          sudo apt install -y python3.12 python3.12-venv python3.12-distutils
+          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-lib2to3 python3.12-tk
           sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
           python3 --version
 
