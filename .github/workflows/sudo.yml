@@ -8,10 +8,14 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Create User and Enable SSH
+      - name: Setup Environment and Install Dependencies
         run: |
           sudo apt-get update -y
+          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          sudo apt-get update -y
           sudo apt-get install -y openssh-server git curl software-properties-common
+          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-tk python3.12-lib2to3
+          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
@@ -27,132 +31,58 @@ jobs:
           echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
           sudo chmod 0440 /etc/sudoers.d/$RDP_USER
 
-      - name: Install and Configure Tailscale
+      - name: Install Tools
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
-          TSIP=$(sudo tailscale ip -4 | head -n1)
-          echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
+          sudo curl -fsSL https://tailscale.com/install.sh | sh
+          sudo curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Install Python 3.12
+      - name: Start Tailscale
+        run: sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
+
+      - name: Install and Run Ngrok
         run: |
-          sudo add-apt-repository ppa:deadsnakes/ppa -y
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+            | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update
-          sudo apt install -y python3.12 python3.12-venv python3.12-dev python3.12-tk python3.12-lib2to3
-          sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
-          python3 --version
+          sudo apt install -y ngrok
 
-      - name: Install Code Server
-        run: sudo curl -fsSL https://code-server.dev/install.sh | sh
+          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Ensure directories
+      - name: Ensure Code Server Directories
         run: |
-          mkdir -p /home/runner/.local/share/code-server/User
-          mkdir -p /home/runner/.config/code-server
+          RDP_USER="${{ secrets.RDP_USER }}"
+          sudo mkdir -p "/home/$RDP_USER/.local/share/code-server/User"
+          sudo mkdir -p "/home/$RDP_USER/.config/code-server"
 
-      - name: Install Extensions
+      - name: Install Code Server Extensions
         run: |
-          sudo -u runner code-server --install-extension golang.go
-          sudo -u runner code-server --install-extension esbenp.prettier-vscode
-          sudo -u runner code-server --install-extension ms-python.python
-          sudo -u runner code-server --install-extension ms-python.debugpy
-          sudo -u runner code-server --install-extension ms-python.vscode-python-envs
-          sudo -u runner code-server --install-extension ritwickdey.LiveServer
-          sudo -u runner code-server --install-extension google.geminicodeassist
-
-      - name: Configure Code Server Settings
-        run: |
-          sudo -u runner tee "/home/runner/.local/share/code-server/User/settings.json" > /dev/null <<'EOF'
-          {
-            "workbench.startupEditor": "none",
-            "workbench.welcomePage.enabled": false,
-            "workbench.colorTheme": "Default Dark Modern",
-            "workbench.statusBar.visible": false,
-            "workbench.editorLargeFileConfirmation": 10024,
-            "workbench.editor.showTabs": "multiple",
-            "workbench.layoutControl.enabled": false,
-            "workbench.activityBar.location": "top",
-            "workbench.tree.indent": 14,
-            "workbench.secondarySideBar.defaultVisibility": "visible",
-            "workbench.colorCustomizations": {
-              "inlineparameters.annotationBackground": "#282AA3600",
-              "inlineparameters.annotationForeground": "#7b82af",
-              "scrollbar.shadow": "#24292e00"
-            },
-            "breadcrumbs.enabled": false,
-            "window.menuBarVisibility": "toggle",
-            "explorer.confirmDragAndDrop": false,
-            "explorer.confirmDelete": true,
-            "explorer.confirmPasteNative": false,
-            "explorer.compactFolders": false,
-            "explorer.sortOrder": "type",
-            "files.autoReveal": false,
-            "editor.fontFamily": "Cascadia Code, 'Courier New', monospace",
-            "editor.fontSize": 16,
-            "editor.lineHeight": 1.4,
-            "editor.tabSize": 3,
-            "editor.detectIndentation": false,
-            "editor.formatOnSave": true,
-            "editor.formatOnPaste": true,
-            "editor.defaultFormatter": "esbenp.prettier-vscode",
-            "editor.fontLigatures": "'calt', 'ss01'",
-            "editor.glyphMargin": true,
-            "editor.folding": true,
-            "editor.cursorStyle": "line",
-            "editor.minimap.enabled": false,
-            "editor.guides.indentation": false,
-            "editor.guides.bracketPairs": true,
-            "editor.suggestSelection": "first",
-            "editor.unicodeHighlight.ambiguousCharacters": false,
-            "editor.unicodeHighlight.invisibleCharacters": false,
-            "editor.bracketPairColorization.enabled": true,
-            "editor.scrollbar": {
-              "verticalScrollbarSize": 8,
-              "horizontalScrollbarSize": 8
-            },
-            "diffEditor.codeLens": true,
-            "terminal.integrated.fontFamily": "Cascadia Code PL",
-            "terminal.integrated.fontSize": 14,
-            "terminal.integrated.lineHeight": 1.2,
-            "extensions.autoRestart": true,
-            "extensions.ignoreRecommendations": true,
-            "extensions.closeExtensionDetailsOnViewChange": true,
-            "git.autofetch": true,
-            "git.enableSmartCommit": true,
-            "git.openRepositoryInParentFolders": "never",
-            "javascript.updateImportsOnFileMove.enabled": "always",
-            "go.toolsManagement.autoUpdate": true,
-            "database-client.autoSync": true,
-            "update.showReleaseNotes": false
-          }
-          EOF
+          RDP_USER="${{ secrets.RDP_USER }}"
+          sudo -u "$RDP_USER" code-server --install-extension golang.go
+          sudo -u "$RDP_USER" code-server --install-extension esbenp.prettier-vscode
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.python
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.debugpy
+          sudo -u "$RDP_USER" code-server --install-extension ms-python.vscode-python-envs
+          sudo -u "$RDP_USER" code-server --install-extension ritwickdey.LiveServer
+          sudo -u "$RDP_USER" code-server --install-extension google.geminicodeassist
 
       - name: Start Code Server
         run: |
-          sudo -u runner nohup code-server /home/runner/chatterbox \
+          RDP_USER="${{ secrets.RDP_USER }}"
+          sudo -u "$RDP_USER" nohup code-server "/home/$RDP_USER" \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
             --cert false > /dev/null 2>&1 &
 
-      - name: Install and Run Ngrok
-        run: |
-          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-            | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null \
-            && echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" \
-            | sudo tee /etc/apt/sources.list.d/ngrok.list \
-            && sudo apt update \
-            && sudo apt install -y ngrok
-
-          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
-
       - name: Clone Repository and Enable Auto Sync
         run: |
-          sudo -u runner git clone https://github.com/smokersaim/chatterbox /home/runner/chatterbox
-          sudo -u runner git config --global user.name "Smoker Saim"
-          sudo -u runner git config --global user.email "smoker.saim@gmail.com"
-          sudo -u runner nohup bash -c '
+          RDP_USER="${{ secrets.RDP_USER }}"
+          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox /home/$RDP_USER/chatterbox
+          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
+          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
+          sudo -u "$RDP_USER" nohup bash -c '
           while true; do
             cd /home/runner/chatterbox
             git pull --rebase
@@ -178,5 +108,5 @@ jobs:
           echo "Repo auto-sync: enabled (every 1 min)"
           echo "--------------------------------"
 
-      - name: Keep Alive for 6 Hours
+      - name: Keep Alive
         run: sudo sleep 21600
