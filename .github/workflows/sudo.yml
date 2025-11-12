@@ -8,25 +8,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Create User and Enable SSH
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y openssh-server git curl software-properties-common
-          sudo systemctl enable ssh
-          sudo systemctl start ssh
-          
-          RDP_USER="${{ secrets.RDP_USER }}"
-          RDP_PASS="${{ secrets.RDP_PASS }}"
-          
-          if ! id -u "$RDP_USER" >/dev/null 2>&1; then
-            sudo useradd -m -s /bin/bash "$RDP_USER"
-          fi
-          
-          echo "$RDP_USER:$RDP_PASS" | sudo chpasswd
-          sudo usermod -aG sudo "$RDP_USER"
-          echo "$RDP_USER ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/$RDP_USER
-          sudo chmod 0440 /etc/sudoers.d/$RDP_USER
-
       - name: Install Python 3.12
         run: |
           sudo add-apt-repository ppa:deadsnakes/ppa -y
@@ -39,42 +20,27 @@ jobs:
         run: |
           sudo curl -fsSL https://code-server.dev/install.sh | sh
 
-      - name: Clone Repository and Enable Auto Sync Setup
+      - name: Install and Configure Ngrok
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          RDP_HOME="/home/$RDP_USER"
-          sudo -u "$RDP_USER" git clone https://github.com/smokersaim/chatterbox "$RDP_HOME/chatterbox"
-          sudo -u "$RDP_USER" git config --global user.name "Smoker Saim"
-          sudo -u "$RDP_USER" git config --global user.email "smoker.saim@gmail.com"
-          
-          if [ -n "${{ secrets.REPO_SYNC_TOKEN }}" ]; then
-            sudo -u "$RDP_USER" git -C "$RDP_HOME/chatterbox" remote set-url origin https://x-access-token:${{ secrets.REPO_SYNC_TOKEN }}@github.com/smokersaim/chatterbox.git
-          fi
-          
-          sudo -u "$RDP_USER" nohup bash -c '
-          while true; do
-            cd /home/${{ secrets.RDP_USER }}/chatterbox
-            git pull --rebase
-            if [ -n "$(git status --porcelain)" ]; then
-              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
-              git add -A
-              git commit -m "Auto sync from code-server at $TIMESTAMP"
-              git push origin main || true
-            fi
-            sleep 60
-          done
-          ' > /dev/null 2>&1 &
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install -y ngrok
+          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          sudo nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
 
-      - name: Configure Code Server Settings & Install Extensions
+      - name: Install Extensions
         run: |
-          RDP_USER="${{ secrets.RDP_USER }}"
-          CODE_SERVER_USER_DIR="/home/$RDP_USER/.local/share/code-server/User"
-          sudo mkdir -p "$CODE_SERVER_USER_DIR"
-          sudo chown -R "$RDP_USER":"$RDP_USER" "/home/$RDP_USER/.local"
-          sudo mkdir -p "/home/$RDP_USER/.config"
-          sudo chown -R "$RDP_USER":"$RDP_USER" "/home/$RDP_USER/.config"
+          sudo code-server --install-extension golang.go
+          sudo code-server --install-extension esbenp.prettier-vscode
+          sudo code-server --install-extension ms-python.python
+          sudo code-server --install-extension ms-python.debugpy
+          sudo code-server --install-extension ms-python.vscode-python-envs
+          sudo code-server --install-extension ritwickdey.LiveServer
+          sudo code-server --install-extension google.geminicodeassist
 
-          sudo -u "$RDP_USER" tee "$CODE_SERVER_USER_DIR/settings.json" > /dev/null <<'EOF'
+      - name: Configure Code Server Settings
+        run: |
+          sudo tee "/home/runner/.local/share/code-server/User/settings.json" > /dev/null <<'EOF'
           {
             "workbench.startupEditor": "none",
             "workbench.welcomePage.enabled": false,
@@ -139,36 +105,33 @@ jobs:
           }
           EOF
 
-          sudo -u "$RDP_USER" code-server --install-extension golang.go
-          sudo -u "$RDP_USER" code-server --install-extension esbenp.prettier-vscode
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.python
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.debugpy
-          sudo -u "$RDP_USER" code-server --install-extension ms-python.vscode-python-envs
-          sudo -u "$RDP_USER" code-server --install-extension ritwickdey.LiveServer
-          sudo -u "$RDP_USER" code-server --install-extension google.geminicodeassist
-
       - name: Start Code Server
         run: |
-          sudo -u ${{ secrets.RDP_USER }} nohup code-server /home/${{ secrets.RDP_USER }}/chatterbox \
+          sudo nohup code-server /home/runner \
             --bind-addr 0.0.0.0:3000 \
             --auth password \
             --password password \
             --cert false > /dev/null 2>&1 &
 
-      - name: Install and Configure Ngrok
+      - name: Clone Repository and Enable Auto Sync Setup
         run: |
-          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-          echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
-          sudo apt update && sudo apt install -y ngrok
-          sudo ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          sudo -u ${{ secrets.RDP_USER }} nohup ngrok http 3000 --url=https://hot-mainly-locust.ngrok-free.app > /dev/null 2>&1 &
+          sudo git clone https://github.com/smokersaim/chatterbox " /home/runner/chatterbox"
+          sudo git config --global user.name "Smoker Saim"
+          sudo git config --global user.email "smoker.saim@gmail.com"
 
-      - name: Install and Configure Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=sudo-cry-${{ github.run_id }} --ssh
-          TSIP=$(sudo tailscale ip -4 | head -n1)
-          echo "TAILSCALE_IP=$TSIP" >> $GITHUB_ENV
+          sudo nohup bash -c '
+          while true; do
+            cd /home/runner/chatterbox
+            git pull --rebase
+            if [ -n "$(git status --porcelain)" ]; then
+              TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+              git add -A
+              git commit -m "Auto sync from code-server at $TIMESTAMP"
+              git push origin main || true
+            fi
+            sleep 60
+          done
+          ' > /dev/null 2>&1 &
 
       - name: Show Access Info
         run: |
@@ -176,9 +139,6 @@ jobs:
           echo "--------------------------------"
           echo "Code Server: https://hot-mainly-locust.ngrok-free.app"
           echo "Auth: password | Password: password"
-          echo "Tailscale IP: $TAILSCALE_IP"
-          echo "SSH User: ${{ secrets.RDP_USER }}"
-          echo "SSH Pass: ${{ secrets.RDP_PASS }}"
           echo "Repo auto-sync: enabled (every 1 min)"
           echo "--------------------------------"
 
